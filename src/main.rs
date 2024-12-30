@@ -60,8 +60,9 @@ fn main() {
 
     // We don't know how large the window will be yet, so lets assume the minimum size we suggested for the initial memory allocation.
     let pool = SlotPool::new(800 * 480 * 4, &shm).expect("failed to create pool");
-
-    let mut hyogen_layer = HyogenLayer::new(layer, &globals, &qh, shm, pool);
+    
+    // Initialize hyogen layer
+    let mut hyogen_layer = HyogenLayer::new(layer, &globals, &qh, shm, pool, hvf_loader);
 
     // We don't draw immediately, the configure will notify us when to first draw.
     loop {

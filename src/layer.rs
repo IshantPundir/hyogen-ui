@@ -3,6 +3,8 @@ use smithay_client_toolkit::{
 };
 use wayland_client::{globals::GlobalList, protocol::{wl_pointer, wl_shm}, QueueHandle};
 
+use crate::hvf::loader::HVFLoader;
+
 pub struct HyogenLayer {
     registry_state: RegistryState,
     pub seat_state: SeatState,
@@ -15,9 +17,10 @@ pub struct HyogenLayer {
 
     width: u32,
     height: u32,
-    shift: Option<u32>,
     first_configure: bool,
-    exit: bool
+    exit: bool,
+
+    hvf_loader: HVFLoader
 }
 
 impl OutputHandler for HyogenLayer {
@@ -146,7 +149,7 @@ impl ProvidesRegistryState for HyogenLayer {
 delegate_registry!(HyogenLayer);
 
 impl HyogenLayer {
-    pub fn new(layer: LayerSurface, globals: &GlobalList, qh: &QueueHandle<HyogenLayer>, shm: Shm, pool: SlotPool) -> Self {
+    pub fn new(layer: LayerSurface, globals: &GlobalList, qh: &QueueHandle<HyogenLayer>, shm: Shm, pool: SlotPool, hvf_loader: HVFLoader) -> Self {
         HyogenLayer {
             registry_state: RegistryState::new(globals),
             seat_state: SeatState::new(globals, qh),
@@ -159,9 +162,10 @@ impl HyogenLayer {
             
             width: 800,
             height: 480,
-            shift: None,
             first_configure: true,
-            exit: false
+            exit: false,
+
+            hvf_loader
         }
     }
 
@@ -172,54 +176,51 @@ impl HyogenLayer {
     pub fn draw(&mut self, qh: &QueueHandle<Self>) {
         let width = self.width;
         let height = self.height;
-        // stride is the number of bytes in one row of the image.
-        // Since each pixel uses 4 bytes (ARGB format), the stride is calculated as width * 4.
         let stride = self.width as i32 * 4;
-
-        // The SlotPool is used to allocate a buffer in shared memory (wl_shm),
-        // which will hold the pixel data.
-        // The buffer's format is Argb8888,
-        // meaning each pixel consists of 4 bytes: Alpha (A), Red (R), Green (G), and Blue (B).
+    
         let (buffer, canvas) = self.pool
             .create_buffer(width as i32, height as i32, stride, wl_shm::Format::Argb8888)
             .expect("create buffer");
-
-        // Draw to the window:
-        {
-            // canvas is a mutable slice of bytes representing the entire buffer. Each pixel consists of 4 bytes
-            let shift = self.shift.unwrap_or(0);
-            canvas.chunks_exact_mut(4).enumerate().for_each(|(index, chunk)| {
-                let x = ((index + shift as usize) % width as usize) as u32;
-                let y = (index / width as usize) as u32;
-
-                let a = 0xFF;
-                let r = u32::min(((width - x) * 0xFF) / width, ((height - y) * 0xFF) / height);
-                let g = u32::min((x * 0xFF) / width, ((height - y) * 0xFF) / height);
-                let b = u32::min(((width - x) * 0xFF) / width, (y * 0xFF) / height);
-                let color = (a << 24) + (r << 16) + (g << 8) + b;
-
-                let array: &mut [u8; 4] = chunk.try_into().unwrap();
-                *array = color.to_le_bytes();
-            });
-
-            if let Some(shift) = &mut self.shift {
-                *shift = (*shift + 1) % width;
+    
+        // Clear the canvas
+        canvas.fill(0);
+    
+        if let Some(render_data) = self.hvf_loader.get("expression", "blink") {
+            if let Some(paths) = render_data.as_array() {
+                // Iterate through each path
+                for path in paths {
+                    if let Some(points) = path.as_array() {
+                        for point in points {
+                            if let Some(coords) = point.as_array() {
+                                if coords.len() == 2 {
+                                    if let (Some(x), Some(y)) = (coords[0].as_f64(), coords[1].as_f64()) {
+                                        // Normalize the coordinates
+                                        let x = ((x / 800.0) * width as f64) as usize; // Assuming original width = 800
+                                        let y = ((y / 600.0) * height as f64) as usize; // Assuming original height = 600
+    
+                                        if x < width as usize && y < height as usize {
+                                            let index = (y * width as usize + x) * 4;
+    
+                                            // Set color (e.g., white)
+                                            canvas[index] = 0xFF; // Blue
+                                            canvas[index + 1] = 0xFF; // Green
+                                            canvas[index + 2] = 0xFF; // Red
+                                            canvas[index + 3] = 0xFF; // Alpha
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
-
-        // Damage the entire window
+    
         self.layer.wl_surface().damage_buffer(0, 0, width as i32, height as i32);
-
-        // Request our next frame
         self.layer.wl_surface().frame(qh, self.layer.wl_surface().clone());
-
-        // Attach and commit to present.
+    
         buffer.attach_to(self.layer.wl_surface()).expect("buffer attach");
         self.layer.commit();
-
-        // TODO save and reuse buffer when the window size is unchanged.  This is especially
-        // useful if you do damage tracking, since you don't need to redraw the undamaged parts
-        // of the canvas.
-            
     }
+    
 }
