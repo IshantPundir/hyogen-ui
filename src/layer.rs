@@ -172,14 +172,21 @@ impl HyogenLayer {
     pub fn draw(&mut self, qh: &QueueHandle<Self>) {
         let width = self.width;
         let height = self.height;
+        // stride is the number of bytes in one row of the image.
+        // Since each pixel uses 4 bytes (ARGB format), the stride is calculated as width * 4.
         let stride = self.width as i32 * 4;
 
+        // The SlotPool is used to allocate a buffer in shared memory (wl_shm),
+        // which will hold the pixel data.
+        // The buffer's format is Argb8888,
+        // meaning each pixel consists of 4 bytes: Alpha (A), Red (R), Green (G), and Blue (B).
         let (buffer, canvas) = self.pool
             .create_buffer(width as i32, height as i32, stride, wl_shm::Format::Argb8888)
             .expect("create buffer");
 
         // Draw to the window:
         {
+            // canvas is a mutable slice of bytes representing the entire buffer. Each pixel consists of 4 bytes
             let shift = self.shift.unwrap_or(0);
             canvas.chunks_exact_mut(4).enumerate().for_each(|(index, chunk)| {
                 let x = ((index + shift as usize) % width as usize) as u32;

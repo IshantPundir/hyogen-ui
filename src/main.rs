@@ -1,8 +1,27 @@
-use hyogen_ui::layer::HyogenLayer;
+use hyogen_ui::{hvf, layer::HyogenLayer};
 use smithay_client_toolkit::{compositor::CompositorState, shell::{wlr_layer::{Anchor, Layer, LayerShell}, WaylandSurface}, shm::{slot::SlotPool, Shm}};
 use wayland_client::{globals::registry_queue_init, Connection};
 
+use std::env;
+
 fn main() {
+    if let Ok(env_filter) = tracing_subscriber::EnvFilter::try_from_default_env() {
+        tracing_subscriber::fmt()
+            .compact()
+            .with_env_filter(env_filter)
+            .init();
+    } else {
+        tracing_subscriber::fmt().compact().init();
+    }
+    
+    // Retrive hvf file path from CLI.
+    let args: Vec<String> = env::args().collect();
+    if args.len() < 2 {
+        tracing::error!("hvf file was not provided!");
+        tracing::info!("Usage: {} <path_to_hvf_file>", args[0]);
+        return;
+    }
+    
     tracing::info!("Welcome to Hyogen UI");
 
     // All wayland clients start by connecting to the compositor (Aurora).
@@ -17,6 +36,9 @@ fn main() {
 
     // HyogenUI uses the wlr layer shell, so make sure the compositor supports it. (Aurora does)
     let layer_shell = LayerShell::bind(&globals, &qh).expect("layer shell is not available");
+
+    // Load hvf files;
+    let hvf_loader = hvf::loader::HVFLoader::new(&args[1]).unwrap();
 
     // Using wl_shm to allow software rendering to a buffer, shared with the compositor process.
     // TODO: Use GPU for rendering.
