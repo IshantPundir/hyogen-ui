@@ -196,7 +196,7 @@ impl HyogenLayer {
                                     if let (Some(x), Some(y)) = (coords[0].as_f64(), coords[1].as_f64()) {
                                         // Normalize the coordinates
                                         let x = ((x / 800.0) * width as f64) as usize; // Assuming original width = 800
-                                        let y = ((y / 600.0) * height as f64) as usize; // Assuming original height = 600
+                                        let y = ((y / 480.0) * height as f64) as usize; // Assuming original height = 600
     
                                         if x < width as usize && y < height as usize {
                                             let index = (y * width as usize + x) * 4;
