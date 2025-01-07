@@ -3,7 +3,7 @@ use smithay_client_toolkit::{
 };
 use wayland_client::{globals::GlobalList, protocol::{wl_pointer, wl_shm}, QueueHandle};
 
-use crate::hvf::loader::HVFLoader;
+use crate::{animator::animator::Animator, hvf::loader::HVFLoader};
 
 pub struct HyogenLayer {
     registry_state: RegistryState,
@@ -20,7 +20,8 @@ pub struct HyogenLayer {
     first_configure: bool,
     exit: bool,
 
-    hvf_loader: HVFLoader
+    hvf_loader: HVFLoader,
+    animator: Animator
 }
 
 impl OutputHandler for HyogenLayer {
@@ -150,6 +151,9 @@ delegate_registry!(HyogenLayer);
 
 impl HyogenLayer {
     pub fn new(layer: LayerSurface, globals: &GlobalList, qh: &QueueHandle<HyogenLayer>, shm: Shm, pool: SlotPool, hvf_loader: HVFLoader) -> Self {
+        let default_ring = hvf_loader.get("expression", "neutral").unwrap();
+        let animator = Animator::new(default_ring);
+        
         HyogenLayer {
             registry_state: RegistryState::new(globals),
             seat_state: SeatState::new(globals, qh),
@@ -165,7 +169,8 @@ impl HyogenLayer {
             first_configure: true,
             exit: false,
 
-            hvf_loader
+            hvf_loader,
+            animator
         }
     }
 
@@ -184,33 +189,26 @@ impl HyogenLayer {
     
         // Clear the canvas
         canvas.fill(0);
-    
-        if let Some(render_data) = self.hvf_loader.get("expression", "blink") {
-            if let Some(paths) = render_data.as_array() {
-                // Iterate through each path
-                for path in paths {
-                    if let Some(points) = path.as_array() {
-                        for point in points {
-                            if let Some(coords) = point.as_array() {
-                                if coords.len() == 2 {
-                                    if let (Some(x), Some(y)) = (coords[0].as_f64(), coords[1].as_f64()) {
-                                        // Normalize the coordinates
-                                        let x = ((x / 800.0) * width as f64) as usize; // Assuming original width = 800
-                                        let y = ((y / 480.0) * height as f64) as usize; // Assuming original height = 600
-    
-                                        if x < width as usize && y < height as usize {
-                                            let index = (y * width as usize + x) * 4;
-    
-                                            // Set color (e.g., white)
-                                            canvas[index] = 0xFF; // Blue
-                                            canvas[index + 1] = 0xFF; // Green
-                                            canvas[index + 2] = 0xFF; // Red
-                                            canvas[index + 3] = 0xFF; // Alpha
-                                        }
-                                    }
-                                }
-                            }
-                        }
+
+        let to_ring = self.hvf_loader.get("expression", "blink").unwrap();
+        let mut interpolators = self.animator.get_interpolaror(to_ring);
+
+        for interpolator in interpolators.iter_mut() {
+            // Iterate through each interpolator;
+            let path = interpolator.interpolate(0.60);
+            for point in path {
+                if point.len() == 2 {
+                    let x = ((point[0] / 800.0) * width as f64) as usize; // Assuming original width = 800
+                    let y = ((point[1] / 480.0) * height as f64) as usize; // Assuming original height = 600
+
+                    if x < width as usize && y < height as usize {
+                        let index = (y * width as usize + x) * 4;
+
+                        // Set color (e.g., white)
+                        canvas[index] = 0xFF; // Blue
+                        canvas[index + 1] = 0xFF; // Green
+                        canvas[index + 2] = 0xFF; // Red
+                        canvas[index + 3] = 0xFF; // Alpha
                     }
                 }
             }
