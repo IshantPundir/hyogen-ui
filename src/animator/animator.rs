@@ -1,4 +1,7 @@
+use core::f64;
 use std::time::{Duration, Instant};
+
+use num_integer::gcd;
 
 use crate::hvf::hvf::HVF;
 
@@ -51,11 +54,7 @@ impl Animator {
     }
 
     fn get_distance(&self, a: &Vec<f64>, b: &Vec<f64>) -> f64 {
-        let ax = a[0];
-        let ay = a[1];
-        let bx = b[0];
-        let by = b[1];
-        ((ax - bx) * (ax - bx) + (ay - by) * (ay - by)).sqrt()
+        ((a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1])).sqrt()
     }
 
     fn get_point_along(&self, a:&Vec<f64>, b: &Vec<f64>, pct:f64) -> Vec<f64> {
@@ -99,6 +98,57 @@ impl Animator {
         }
     }
 
+    fn offset_path(&mut self, path: &mut Vec<Vec<f64>>, path_len: usize, offset_val: usize) {
+        let offset_val = offset_val % path_len;
+        if offset_val == 0 {
+            return; // No rotation needed
+        }
+        let g_c_d = gcd(offset_val, path_len);
+    
+        for i in 0..g_c_d {
+            let temp = std::mem::take(&mut path[i]);
+            let mut j = i;
+    
+            loop {
+                let k = (j + offset_val) % path_len;
+    
+                if k == i {
+                    break;
+                }
+    
+                path[j] = std::mem::replace(&mut path[k], Vec::new());
+                j = k;
+            }
+    
+            path[j] = temp;
+        }
+    }
+    
+
+    fn rotate(&mut self, path: &mut Vec<Vec<f64>>, vs: &Vec<Vec<f64>>) {
+        let path_len = vs.len();
+        let mut min_val = f64::INFINITY;
+        let mut best_offset: usize = 0;
+
+        for offset in 0..path_len {
+            let mut sum_of_square = 0.0;
+
+            for i in 0..path_len {
+                let d = self.get_distance(&path[(offset + i) % path_len], &vs[i]);
+                sum_of_square += d * d;
+            }
+
+            if sum_of_square < min_val {
+                min_val = sum_of_square;
+                best_offset = offset;
+            }
+        }
+
+        if best_offset != 0{
+            self.offset_path(path, path_len, best_offset);       
+        }
+    }
+
     fn normalize(&mut self, current_path: &mut Vec<Vec<f64>>, target_path: &mut Vec<Vec<f64>>) {
         let diff = current_path.len() as i32 - target_path.len() as i32;
 
@@ -107,6 +157,8 @@ impl Animator {
         } else if diff > 0 {
             self.add_points(target_path, diff as usize);
         }
+
+        self.rotate(current_path, &target_path);
     }
 
     fn get_interpolaror(&mut self, target_ring: &HVF) ->  Vec<Interpolator>{
