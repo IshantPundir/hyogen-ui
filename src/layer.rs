@@ -1,9 +1,11 @@
+use std::time::{Duration, Instant};
+
 use smithay_client_toolkit::{
     compositor::CompositorHandler, delegate_compositor, delegate_layer, delegate_output, delegate_registry, delegate_shm, output::{OutputHandler, OutputState}, registry::{ProvidesRegistryState, RegistryState}, registry_handlers, seat::SeatState, shell::{wlr_layer::{LayerShellHandler, LayerSurface}, WaylandSurface}, shm::{slot::SlotPool, Shm, ShmHandler}
 };
 use wayland_client::{globals::GlobalList, protocol::{wl_pointer, wl_shm}, QueueHandle};
 
-use crate::{animator::animator::Animator, hvf::loader::HVFLoader};
+use crate::{animator::animator::Animator, hvf::hvf::HVF};
 
 pub struct HyogenLayer {
     registry_state: RegistryState,
@@ -20,8 +22,8 @@ pub struct HyogenLayer {
     first_configure: bool,
     exit: bool,
 
-    hvf_loader: HVFLoader,
-    animator: Animator
+    // hvf_loader: HVFLoader,
+    pub animator: Animator
 }
 
 impl OutputHandler for HyogenLayer {
@@ -150,9 +152,11 @@ impl ProvidesRegistryState for HyogenLayer {
 delegate_registry!(HyogenLayer);
 
 impl HyogenLayer {
-    pub fn new(layer: LayerSurface, globals: &GlobalList, qh: &QueueHandle<HyogenLayer>, shm: Shm, pool: SlotPool, hvf_loader: HVFLoader) -> Self {
-        let default_ring = hvf_loader.get("expression", "neutral").unwrap();
-        let animator = Animator::new(default_ring);
+    pub fn new(layer: LayerSurface, globals: &GlobalList, qh: &QueueHandle<HyogenLayer>, shm: Shm, pool: SlotPool, default_ring: &HVF) -> Self {
+        // let default_ring = hvf_loader.get("expression", "neutral").unwrap();
+        let mut animator = Animator::new(default_ring);
+        animator.animate(default_ring, Duration::from_secs_f32(0.0));
+        // animator.animate(to_ring);
         
         HyogenLayer {
             registry_state: RegistryState::new(globals),
@@ -169,7 +173,7 @@ impl HyogenLayer {
             first_configure: true,
             exit: false,
 
-            hvf_loader,
+            // hvf_loader,
             animator
         }
     }
@@ -190,16 +194,11 @@ impl HyogenLayer {
         // Clear the canvas
         canvas.fill(0);
 
-        let to_ring = self.hvf_loader.get("expression", "blink").unwrap();
-        let mut interpolators = self.animator.get_interpolaror(to_ring);
-
-        for interpolator in interpolators.iter_mut() {
-            // Iterate through each interpolator;
-            let path = interpolator.interpolate(0.60);
-            for point in path {
-                if point.len() == 2 {
-                    let x = ((point[0] / 800.0) * width as f64) as usize; // Assuming original width = 800
-                    let y = ((point[1] / 480.0) * height as f64) as usize; // Assuming original height = 600
+        for path in &self.animator.get_path(Instant::now()) {
+            for coordinated in path {
+                if coordinated.len() == 2 {
+                    let x = ((coordinated[0] / 800.0) * width as f64) as usize; // Assuming original width = 800
+                    let y = ((coordinated[1] / 480.0) * height as f64) as usize; // Assuming original height = 600
 
                     if x < width as usize && y < height as usize {
                         let index = (y * width as usize + x) * 4;
@@ -209,7 +208,7 @@ impl HyogenLayer {
                         canvas[index + 1] = 0xFF; // Green
                         canvas[index + 2] = 0xFF; // Red
                         canvas[index + 3] = 0xFF; // Alpha
-                    }
+                    }    
                 }
             }
         }
@@ -219,6 +218,5 @@ impl HyogenLayer {
     
         buffer.attach_to(self.layer.wl_surface()).expect("buffer attach");
         self.layer.commit();
-    }
-    
+    }   
 }

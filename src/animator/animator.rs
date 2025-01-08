@@ -1,17 +1,27 @@
+use std::time::{Duration, Instant};
+
 use crate::hvf::hvf::HVF;
 
 use super::interpolator::Interpolator;
 
 
 pub struct Animator {
-    active_ring: HVF
+    active_ring: HVF,
+    active_interpolators: Vec<Interpolator>,
+
+    interpolate_instance: Instant,
+    interpolate_duration: Duration
 }
 
 impl Animator {
     pub fn new(default_ring: &HVF) -> Self {
         
         Self {
-            active_ring: default_ring.clone()
+            active_ring: default_ring.clone(),
+            active_interpolators: Vec::new(),
+
+            interpolate_instance: Instant::now(),
+            interpolate_duration: Duration::from_secs_f64(0.0)
         }
     }
 
@@ -24,9 +34,9 @@ impl Animator {
         let mut path_len = 0.0;
 
         for i in 0..path.len(){
+            b = &path[i];
             xa = xb;
             ya = yb;
-            b = &path[i];
             xb = b[0];
             yb = b[1];
 
@@ -99,7 +109,7 @@ impl Animator {
         }
     }
 
-    pub fn get_interpolaror(&mut self, target_ring: &HVF) ->  Vec<Interpolator>{
+    fn get_interpolaror(&mut self, target_ring: &HVF) ->  Vec<Interpolator>{
         // TODO: asset if target_ring is compatible!
         let mut collection: Vec<Interpolator> = Vec::new();
         // Loop through each vector inside target_ring and active_ring;
@@ -114,5 +124,25 @@ impl Animator {
         }
 
         collection
+    }
+
+    pub fn animate(&mut self, target_ring: &HVF, duration: Duration) {
+        self.interpolate_instance = Instant::now();
+        self.interpolate_duration = duration;
+        self.active_interpolators = self.get_interpolaror(target_ring);
+    }
+
+    pub fn get_path(&mut self, time: Instant) -> Vec<Vec<Vec<f64>>> {
+        let mut paths = Vec::new();
+        // Get how how have animation been running...
+        let elapsed = time.duration_since(self.interpolate_instance);
+        let interpolate_value = (elapsed.as_secs_f64() / self.interpolate_duration.as_secs_f64()) % 1.0;
+
+        for interpolator in self.active_interpolators.iter_mut() {
+            let path = interpolator.interpolate(interpolate_value);
+            paths.push(path);
+        }
+
+        paths
     }
 }
